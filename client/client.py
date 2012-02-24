@@ -145,7 +145,10 @@ class ConnectionPool(object):
         return conns
 
     def get_connection(self):
-        cn = self._connections.get(True,1) # set the timeout 1 second
+        try:
+            cn = self._connections.get(True,1) # set the timeout 1 second
+        except Queue.Empty:
+            cn = None
         if cn is None:
             cn = Connection(self.host,self.port)
         return cn
