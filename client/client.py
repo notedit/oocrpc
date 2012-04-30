@@ -5,213 +5,197 @@
 import socket
 import struct
 import bson
-from bson import BSON
-from Queue import Queue
+
+try:
+    import cbson
+    decode_document = cbson.decode_next
+except ImportError:
+    from bson import codec
+    decode_document = codec.decode_document
 
 """
-a simple connection pool
+a simple connection client
 """
 
 SOCKET_TIMEOUT = 10.0
 
+len_struct = struct.Struct('<i')
+unpack_length = len_struct.unpack_from
+len_struct_size = len_struct.size
+default_read_buffer_size = 8192
 
+class ConnectionError(Exception):
+    pass
 
-class BackendError(Exception):
-
-    def __init__(self,message,detail):
-        self.message = message
-        self.detail = detail
-
-    def __str__(self):
-        return 'BackendError(%s,%s)' % (self.message,self.detail)
-
-    def __repr__(self):
-        return 'BakcneError(%s,%s)' % (self.message,self.detail)
-
+class BackendError(RpcError):
+    pass
 
 class RpcError(Exception):
     
-    def __init__(self,message,detail):
+    def __init__(self,message):
         self.message = message
-        self.detail = detail
 
     def __str__(self):
-        return '%s:%s' % (self.message,self.detail)
+        return self.message
 
     def __repr__(self):
-        return '%s,%s' % (self.message,self.detail)
+        return self.message,self.detail
+
+class Request(object):
+    header = None
+    body = None
+    def __init__(self,method,args):
+        self._operation = 1
+        self._method = method
+        self.body = args
+        self.header = {'operation':self._operation,
+                        'method':self._method}
+    
+    def encode_request(self):
+        try:
+            return bson.dumps(self.header) + bson.dumps(self.body)
+        except Exception,ex:
+            errstr = traceback.format_exc()
+            raise RpcError('EncodeError:%s'%errstr)
+
+class Response(object):
+    
+    header = None
+    reply = None
+
+    @property
+    def error(self):
+        pass
+
+    def decode_response(self,data):
+        try:
+            offset,self.header = decode_document(data,0)
+            offset,self.reply = decode_document(data,offset)
+        except Exception,ex:
+            errstr = traceback.format_exc()
+            raise RpcError('DecodeError:%s'%errstr)
+
 
 class Connection(object):
 
-    def __init__(self,host='localhost',port=9090):
+    def __init__(self,host='localhost',port=9090,timeout=10.0):
         self.host = host
         self.port = port
-        self._sock = None
+        self.timeout = timeout
+        self._conn = None
 
     def __del__(self):
         try:
-            self.disconnect()
+            self.close()
         except:
             pass
 
-    def connect(self):
-        if self._sock:
-            return
+    @property
+    def conn(self):
+        if self._conn:
+            return self._conn
         try:
-            sock = self._connect()
+            sock = self.connect()
         except socket.timeout,e:
-            raise RpcError('ConnTimeoutError',str(e))
+            raise ConnectionError('can not connect to %s:%d'%(self.host,self.port))
         except socket.error,e:
-            raise RpcError('ConntionError',str(e))
-        self._sock = sock
+            raise ConnectionError('can not connect to %s:%d'%(self.host,self.port))
+        self._conn = sock
+        return self._conn
 
-    def _connect(self):
+    def connect(self):
         sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        sock.settimeout(SOCKET_TIMEOUT)
+        sock.settimeout(self.timeout)
         sock.connect((self.host,self.port))
         return sock
 
-    def disconnect(self):
-        if self._sock is None:
+    def reconnect(self):
+        self.close()
+        try:
+            sock = self.connect()
+        except:
+            raise ConnectionError('can not connect to %s:%d'%(self.host,self.port))
+        self._conn = sock
+
+    def close(self):
+        if self._conn is None:
             return
         try:
-            self._sock.close()
+            self._conn.close()
         except socket.error:
             pass
-        self._sock = None
+        self._conn = None
 
     def write_request(self,method,args):
-        if not self._sock:
-            self.connect()
+        request = Request(method,args)
+        data = request.encode_request()
         try:
-            data = self.encode(method,args)
-            self._sock.sendall(data)
-        except:
-            self.disconnect()
-            raise
+            self.conn.sendall(data)
+        except ConnectionError,ex:
+            self.reconnect()
+            self.conn.sendall(data)
 
-    def read_request(self):
+    def read_response(self):
         try:
-            m = self._sock.recv(4)
-            while len(m) < 4:
-                m += self._sock.recv(4-len(m))
-            lt = struct.unpack('>i',m)[0]
-            ret = self._sock.recv(lt)
-            while len(ret) < lt:
-                ret += self._sock.recv(lt - len(ret))
-            return self.decode(ret)
-        except:
-            self.disconnect()
-            raise
+            buf = []
+            buf_write = buf.append
+            data,data_len = self._read_more(buf,buf_write)
+            while data_len < len_struct_size:
+                data,data_len = self._read_more(buf,buf_write)
+            # header's length
+            header_len = unpack_length(data)[0]
+            while data_len < (header_len + len_struct_size):
+                data,data_len = self._read_more(buf,buf_write)
+            # body's length
+            body_len = unpack_length(data,header_len)[0]
+            total_len = header_len + body_len
+            while data_len < total_len:
+                data,data_len = self._read_more(buf,buf_write)
+            res = Response()
+            res.decode_response(data)
+            return res
+        except struct.error,e:
+            self.close()
+            raise RpcError('can not unpack the response')
 
-    def decode(self,data):
-        ret = bson.BSON(data).decode()
-        return ret
-
-    def encode(self,method,args):
-        cdict = {'operation':1,'method':method,'argument':args}
-        cs = bson.BSON.encode(cdict)
-        msghead = struct.pack('>i',len(cs))
-        return msghead + cs
-
-    def call(self,method,args):
+    def _read_more(self,buf,buf_write):
         try:
-            self.write_request(method,args)
-            ret = self.read_request()
-            if ret.get('operation',None) == 2:
-                return ret['reply'] or None
-            elif ret.get('operation',None) == 3:
-                raise BackendError(ret['reply']['message'],ret['reply']['detail'])
-            else:
-                raise BackendError('InternalError','unvalid response')
-        except BackendError,err:
-            raise
-        except Exception,err:
-            raise BackendError('InternalError',str(err))
-
-
-class ConnectionPool(object):
-    """Generic connection pool"""
-    def __init__(self,host='localhost',port=9090,max_connection=10):
-        self.host = host
-        self.port = port
-        self.max_connection = max_connection
-        self._connections = self.initconns()
-
-    def initconns(self):
-        conns = Queue(self.max_connection)
-        #for x in xrange(self.max_connection):
-        conns.put(None)
-        return conns
-
-    def get_connection(self):
-        try:
-            cn = self._connections.get(True,1) # set the timeout 1 second
-        except Queue.Empty:
-            cn = None
-        if cn is None:
-            cn = Connection(self.host,self.port)
-        return cn
-
-    def release(self,cn):
-        if not self._connections.full():
-            self._connections.put(cn)
+            data = self.conn.recv(default_read_buffer_size)
+            if not data:
+                raise ConnectionError('unexpected EOF in read')
+        except socket.timeout:
+            data = ''
+        if buf:
+            buf_write(data)
+            data = ''.join(buf)
         else:
-            cn.disconnect()
+            buf_write(data)
+        return data,len(data)
 
-class Service(object):
-    """rpc service"""
-    def __init__(self,sname,cliet):
-        self.sname = sname
-        self.client = client
-        self.mdict = {} # a dict 
-
-    def __getattr__(self,method):
-        sm = '%s.%s'% (self.sname,method)
-        if self.mdict.get(sm,None) is None:
-            me = lambda args: self.__call__(sm,args)
-            me.__name__ = sm
-            self.mdict[sm] = me
-            return me
-        else:
-            return self.mdict.get(sm)
-
-    def __call__(self,method,args):
-        #serviceMethod
-        conn = self.client.pool.get_connection()
-        try:
-            ret = conn.call(method,args)
-        except BackendError,ex:
-            self.client.pool.release(conn)
-            raise
-        self.client.pool.release(conn)
-        return ret
-        
 
 class RpcClient(object):
     """rpc client"""
-    sdict = {}
-    pool = None
     def __init__(self,host='localhost',port=9090):
         self.host = host
         self.port = port
-        self.pool = ConnectionPool(host,port)
+        self.conn = Connection(self.host,self.port)
 
-    def __getattr__(self,service):
-        if self.sdict.get(service,None) is None:
-            ser = Service(service,self)
-            self.sdict[service] = ser
-            return ser
-        else:
-            return self.sdict.get(service)
-            
+    def __getattr__(self,funcname):
+        func = lambda **kwargs:self.__call__(funcname,**kwargs)f
+        func.__name__ = funcname
+        return func
 
-
+    def __call__(self,method,**kwargs):
+        self.conn.write_request(method,kwargs)
+        res = self.conn.read_response()
+        if res.error:
+            raise RpcError(res.error)
+        return res.reply
 
 if __name__ == '__main__':
     client = RpcClient(host='localhost',port=9090)
-    ret = client.Arith.Add({'a':7,'b':8})
+    ret = client.Add({'a':7,'b':8})
     print 'Arith.Add',ret
 
-    ret = client.Arith.Mul({'a':7,'b':8})
+    ret = client.Mul({'a':7,'b':8})
     print 'Arith.Mul',ret
