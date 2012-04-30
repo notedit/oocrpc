@@ -1,13 +1,13 @@
-# lisrpc
+# oocrpc
 
-This is lisrpc, a rpc based on bson, you can call the remote golang service from the python client.
+This is oocrpc, a rpc based on bson, you can call the remote golang service from the python client.
 
 so you can write the webapp's frontend with python(django tornado flask), write the webapp's backend with go.
 
 ## QUICK START
 
-    $ go get  github.com/notedit/lisrpc/rpc
-    $ go test github.com/notedit/lisrpc/rpc
+    $ go get  github.com/notedit/oocrpc/rpc
+    $ go test github.com/notedit/oocrpc/rpc
 
 
 # go rpc server:
@@ -17,7 +17,7 @@ package main
                                                                                                                             
 import (
     "errors"
-    "github.com/notedit/lisrpc/rpc"
+    "github.com/notedit/oocrpc/rpc"
 )
 
 type Args struct {
@@ -71,7 +71,7 @@ package main
 
 import (
     "fmt"
-    "github.com/notedit/lisrpc/rpc"
+    "github.com/notedit/oocrpc/rpc"
 )
 
 type Args struct {
@@ -134,9 +134,9 @@ func main() {
 from client import RpcClient
 
 client = RpcClient(host='localhost',port=9090)                                                                          
-ret = client.Arith.Add({'a':7,'b':8})
-print 'Arith.Add',ret
+ret = client.Add({'a':7,'b':8})
+print 'Add',ret
 
-ret = client.Arith.Mul({'a':7,'b':8})
-print 'Arith.Mul',ret
+ret = client.Mul({'a':7,'b':8})
+print 'Mul',ret
 ```
