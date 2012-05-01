@@ -41,6 +41,7 @@ type service struct {
 type Server struct {
 	mu         sync.Mutex
 	serviceMap map[string]*service
+    allMethod  map[string]*methodType
 	listener   *net.TCPListener
 	reqLock    sync.Mutex
 	freeReq    *serverRequest
@@ -48,33 +49,21 @@ type Server struct {
 	freeResp   *serverResponse
 }
 
-//BackendError
-type BackendError struct {
-	Message string
-	Detail  string
-}
-
-func (e BackendError) Error() string {
-	return fmt.Sprintf("%s:%s", e.Message, e.Detail)
-}
 
 // operation has three values -- call:1  reply:2  error:3
 
 // request
 type serverRequest struct {
-	messageLength uint32         // unexported
 	next          *serverRequest // unexported
 	Operation     uint8
 	Method        string
-	Argument      bson.Raw
 }
 
 // response
 type serverResponse struct {
-	messageLength uint32          // unexported
 	next          *serverResponse // unexported
 	Operation     uint8
-	Reply         interface{}
+    Error         string
 }
 
 // decode request and encode response
@@ -83,57 +72,86 @@ type ServerCodec struct {
 	rw *bufio.ReadWriter
 }
 
-// read the message header
+// read the request header
 func (c *ServerCodec) ReadRequestHeader(req *serverRequest) (err error) {
 	msgheader := make([]byte, 4)
-	_, err = c.rw.Read(msgheader)
-	if err != nil {
-		req = nil
-		if err == io.EOF {
-			return
-		}
-		err = errors.New("rpc: server cannot decode requestheader: " + err.Error())
-		return
-	}
-	req.messageLength = binary.BigEndian.Uint32(msgheader)
-	return nil
+    n, err := io.ReadFull(c.rw.Reader,msgheader)
+    if err != nil {
+        return
+    }
+    if n != 4 {
+        return io.ErrUnexpectedEOF
+    }
+    length := binary.LittleEndian.Uint32(msgheader)
+    b := make([]byte,length)
+    binary.LittleEndian.PutUint32(b,length)
+    n,err = io.ReadFull(c.rw.Reader,b[4:])
+    if err != nil {
+        if err == io.EOF {
+            return io.ErrUnexpectedEOF
+        }
+        return err
+    }
+    if n != int(length-4) {
+        return io.ErrUnexpedtedEOF
+    }
+    if err = bson.Unmarshal(b,req); err != nil {
+        return 
+    }
+	return 
 }
 
-func (c *ServerCodec) ReadRequestBody(req *serverRequest) (err error) {
-	msgbytes, err := ioutil.ReadAll(io.LimitReader(c.rw.Reader, int64(req.messageLength)))
-	if err != nil {
-		if err == io.EOF {
-			return
-		}
-		err = errors.New("rpc: server cannot read full requestBody: " + err.Error())
-		return
-	}
-	if err = bson.Unmarshal(msgbytes, req); err != nil {
-		return
-	}
-	return
+// read the request body
+func (c *ServerCodec) ReadRequestBody(body interface{}) (err error) {
+    msgbody := make([]byte,4)
+    n,err := io.readFull(c.rw.Reader,msgbody)
+    if err != nil {
+        return 
+    }
+    if n != 4 {
+        return io.ErrUnexpectedEOF
+    }
+    length := binary.LittleEndian.Uint32(msgbody)
+    b := make([]byte,length)
+    binary.LittleEndian.PutUint32(b,length)
+    n,err = io.ReadFull(c.rw.Reader,b[4:])
+    if err != nil {
+        if err == io.EOF {
+            return io.ErrUnexpectedEOF
+        }
+        return 
+    }
+    if err = bson.Unmarshal(b,body); err != nil {
+        return
+    }
+    return 
 }
 
-func (c *ServerCodec) WriteResponse(res *serverResponse) (err error) {
+func (c *ServerCodec) WriteResponse(res *serverResponse,body interface{}) (err error) {
+    
 	bys, err := bson.Marshal(res)
 	if err != nil {
-		log.Println("writeresponse error", err)
+		log.Println("marshal response header error", err)
 		return
 	}
-	res.messageLength = uint32(len(bys))
+
 	// write message header
 	rw := c.rw.Writer
-	_, err = rw.Write([]byte{byte(res.messageLength >> 24), byte(res.messageLength >> 16), byte(res.messageLength >> 8), byte(res.messageLength)})
-	if err != nil {
-		log.Println("write responseHeader error", err)
-		return
-	}
-	// write message body
 	_, err = rw.Write(bys)
 	if err != nil {
-		log.Println("write responseBody error", err)
+		log.Println("write responseheader error", err)
 		return
 	}
+    // write message body
+    bys,err = bson.Marshal(body)
+    if err != nil {
+        log.Println("marshal response body error",err)
+        return 
+    }
+    _,err = rw.Write(bys)
+    if err != nil {
+        log.Println("write response body error",err)
+    }
 	if err = rw.Flush(); err != nil {
 		log.Println("flush responseBody error", err)
 	}
@@ -245,6 +263,13 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) erro
 		}
 
 		s.method[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
+        
+        // register the method in server's allMethod, for python client
+        if _,ok := server.allMethod[mname]; ok {
+            log.Println("method",mname,"  already exisit")
+            return errors.New("method",mname,"  already exisit")
+        }
+        server.allMethod[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
 	}
 
 	if len(s.method) == 0 {
@@ -267,6 +292,7 @@ func NewServer(host string, port uint) *Server {
 	}
 	return &Server{
 		serviceMap: make(map[string]*service),
+        allMethod:  make(map[string]*methodType),
 		listener:   listener,
 	}
 }
@@ -348,76 +374,48 @@ func (server *Server) ServeCodec(codec *ServerCodec) {
 			}
 			// we just got the req
 			if req != nil {
-				server.sendResponse(nil, req, codec, err, sending)
+				server.sendResponse(sending,req,invalidRequest,codec,err.Error())
 				server.freeRequest(req)
 			}
 			continue
 		}
-		go service.call(server, mtype, req, argv, replyv, codec, sending)
+		go service.call(server,sending,mtype,req,argv,replyv,codec)
 	}
-	// to do some recover
 	codec.Close()
 }
 
 func (server *Server) readRequest(codec *ServerCodec) (service *service, mtype *methodType, req *serverRequest, argv reflect.Value, replyv reflect.Value, keepReading bool, err error) {
-	req, keepReading, err = server.readRequestHeader(codec)
+	service,mtype,req, keepReading, err = server.readRequestHeader(codec)
 	if err != nil {
-		return
+		if !keepReading {
+            return 
+        }
+        // just discard body
+        codec.ReadRequestBody(nil)
+        return 
 	}
-	service, mtype, argv, replyv, keepReading, err = server.readRequestBody(codec, req)
-	return
+    
+    argIsValue := false
+    if mtype.ArgType.Kind() == reflect.Ptr {
+        argv = reflect.New(mtype.ArgType.Elem())
+    } else {
+        argv = reflect.New(mtype.ArgType)
+        argIsValue = true
+    }
+    
+    // argv guaranteed to be a pointer 
+    if err = codec.ReadRequestBody(argv.Interface()); err != nil {
+        return 
+    }
+    if argIsValue {
+        argv = argv.Elem()
+    }
+    replyv = reflect.New(mtype.ReplyType.Elem())
+    return 
 }
 
-func (server *Server) readRequestBody(codec *ServerCodec, req *serverRequest) (service *service, mtype *methodType, argv reflect.Value, replyv reflect.Value, keepReading bool, err error) {
-	err = codec.ReadRequestBody(req)
-	if err != nil {
-		return
-	}
-	// funcname'format  -- service.method
 
-	keepReading = true
-	serviceMethod := strings.Split(req.Method, ".")
-	if len(serviceMethod) != 2 {
-		err = errors.New("rpc: service/method request ill-formed: " + req.Method)
-		return
-	}
-	// look up the service
-	server.mu.Lock()
-	service = server.serviceMap[serviceMethod[0]]
-	server.mu.Unlock()
-	if service == nil {
-		err = errors.New("rpc: can't find service " + serviceMethod[0])
-		return
-	}
-	// look up the method
-	mtype = service.method[serviceMethod[1]]
-	if mtype == nil {
-		err = errors.New("rpc: can't find method " + serviceMethod[1])
-		return
-	}
-
-	argIsValue := false
-	if mtype.ArgType.Kind() == reflect.Ptr {
-		argv = reflect.New(mtype.ArgType.Elem())
-	} else {
-		argv = reflect.New(mtype.ArgType)
-		argIsValue = true
-	}
-
-	//argv now is a pointer now
-	if err = req.Argument.Unmarshal(argv.Interface()); err != nil {
-		return
-	}
-
-	if argIsValue {
-		argv = argv.Elem()
-	}
-
-	replyv = reflect.New(mtype.ReplyType.Elem())
-	return
-}
-
-func (server *Server) readRequestHeader(codec *ServerCodec) (req *serverRequest, keepReading bool, err error) {
+func (server *Server) readRequestHeader(codec *ServerCodec) (service *service,mtype *methodType,req *serverRequest, keepReading bool, err error) {
 	req = server.getRequest()
 	err = codec.ReadRequestHeader(req)
 	if err != nil {
@@ -426,51 +424,69 @@ func (server *Server) readRequestHeader(codec *ServerCodec) (req *serverRequest,
 			return
 		}
 		err = errors.New("rpc: server cannot decode the requestheader: " + err.Error())
+        return 
 	}
-	return
+    
+    keepReading = true
+    serviceMethod := strings.Split(req.Method,".")
+    // just have the method  
+    if len(serviceMethod) == 1 {
+        server.mu.Lock()
+        mtype = server.allMethod[serviceMethod[0]]
+        server.mu.Unlock()
+        if mtype == nil {
+            err = errors.New("rpc: can not find method " + req.Method)
+        }
+    }
+    // need to check service and method all
+    if len(serviceMethod) == 2 {
+        server.mu.Lock()
+        service = server.serviceMap[serviceMethod[0]]
+        server.mu.Unlock()
+        if service == nil {
+            err = errors.New("rpc: can not find service " + req.Method)
+            return 
+        }
+        mtype = service.method[serviceMethod[1]]
+        if mtype == nil {
+            err = errors.New("rpc: can not find method " + req.Method)
+        }
+    }
+	return 
 }
 
-func (server *Server) sendResponse(reply interface{}, req *serverRequest, codec *ServerCodec, err interface{}, sending *sync.Mutex) {
-	var rerr error
-	res := server.getResponse()
-	switch err.(type) {
-	case nil:
-		res.Operation = uint8(2)
-		res.Reply = reply
-	case BackendError:
-		res.Operation = uint8(3)
-		res.Reply = err
-	case error:
-		res.Operation = uint8(3)
-		res.Reply = BackendError{Message: "InternalError", Detail: err.(error).Error()}
-	default:
-		res.Operation = uint8(3)
-		res.Reply = BackendError{Message: "InternalError", Detail: "error is unvalid"}
-	}
-	sending.Lock()
-	rerr = codec.WriteResponse(res)
-	if rerr != nil {
-		log.Println("rpc error:", rerr)
-	}
-	sending.Unlock()
-	server.freeResponse(res)
+var invalidRequest = struct{}{}
+
+func (server *Server) sendResponse(sending *syncMutex,req *serverRequest,reply interface{},codec *ServerCodec, errmsg string) {
+	resp := server.getResponse()
+    if errmsg != "" {
+        resp.Error = errmsg
+        reply = invalidRequest
+        resp.Operation = uint8(3)
+    } else {
+        resp.Operation = uint8(2)
+    }
+
+    sending.Lock()
+    err := codec.WriteResponse(resp,reply)
+    if err != nil {
+        log.Println("rpc: writing response:",err)
+    }
+    sending.Unlock()
+    server.freeResponse(resp)
 }
 
 // run the service.method
-func (s *service) call(server *Server, mtype *methodType, req *serverRequest, argv, replyv reflect.Value, codec *ServerCodec, sending *sync.Mutex) {
-	defer func() {
-		// it may be panic in the method
-		if r := recover(); r != nil {
-			err := errors.New(fmt.Sprint(r))
-			server.sendResponse(nil, req, codec, err, sending)
-			server.freeRequest(req)
-		}
-	}()
-	function := mtype.method.Func
-	returnValues := function.Call([]reflect.Value{s.rcvr, argv, replyv})
-	err := returnValues[0].Interface()
-	server.sendResponse(replyv.Interface(), req, codec, err, sending)
-	server.freeRequest(req)
+func (s *service) call(server *Server,sending *sync.Mutex,mtype *methodType, req *serverRequest, argv, replyv reflect.Value, codec *ServerCodec) {
+    function := mtype.method.Func
+    returnValues := function.Call([]reflect.Value{s.rcvr,argv,replyv})
+    errInter := returnValues[0].Interface()
+    errmsg := ""
+    if errInter != nil {
+        errmsg = errInter.(error).Error()
+    }
+    server.sendResponse(sending,req,replyv.Interface(),codec,errmsg)
+    server.freeRequest(req)
 }
 
 //////////////////////////////////////////////////////////////////////
