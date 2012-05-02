@@ -4,9 +4,10 @@
 package rpc
 
 import (
+    "fmt"
 	"errors"
-	"fmt"
 	"testing"
+    "strings"
 )
 
 type Args struct {
@@ -52,6 +53,7 @@ func TestServer(t *testing.T) {
 	go startServer()
 	client := New("localhost:9091")
 
+    fmt.Println("string....")
 	// normal calls
 	args := &Args{7, 8}
 	reply := new(Reply)
@@ -69,20 +71,20 @@ func TestServer(t *testing.T) {
 	err = client.Call("Arith.BadOperation", args, reply)
 	if err == nil {
 		t.Error("BadOperation: expected errpor")
-	} else if err.(BackendError).Message != "InternalError" {
-		fmt.Printf("%#v\n", err)
-		t.Errorf("BadOperation: expected can't find method error")
-	}
+	} else if !strings.Contains(err.Error(),"method") {
+        t.Error("expected none exist method,got:",err.Error())
+    }
 
+    t.Log(err.Error())
 	// normal error
 
 	err = client.Call("Arith.NError", args, reply)
 	if err == nil {
 		t.Error("expected normal error")
-	} else if err.(BackendError).Detail != "normalerror" {
-		fmt.Println(err)
-		t.Errorf("error detail will be normalerror, %v\n", err)
-	}
+    } else if !strings.Contains(err.Error(),"normalerror")  {
+        t.Error("expected an normal error, got ",err.Error())
+    } 
+    t.Log(err.Error())
 
 	// Unknown service
 	args = &Args{7, 8}
@@ -90,20 +92,20 @@ func TestServer(t *testing.T) {
 	err = client.Call("Unknow.Arith", args, reply)
 	if err == nil {
 		t.Error("expected Unknow service error")
-	} else if err.(BackendError).Message != "InternalError" {
-		t.Error("error message will be InternalError  ")
-	}
+	} else if !strings.Contains(err.Error(),"service") {
+        t.Error("expected Unknow service error: got ",err.Error())
+    }
+    t.Log(err.Error())
 
 	// Error test
 	args = &Args{7, 0}
 	reply = new(Reply)
 	err = client.Call("Arith.Div", args, reply)
 
-	fmt.Printf("%#v\n", err)
 	if err == nil {
 		t.Error("Div: expected error")
-	} else if err.(BackendError).Detail != "divide by zero" {
-		t.Error("expected divide by zero error detail")
-	}
+	} else if !strings.Contains(err.Error(),"divide by") {
+        t.Error("expected divide by zero error detail:",err.Error())
+    }
 
 }
