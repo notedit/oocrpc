@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"reflect"
@@ -23,6 +22,9 @@ import (
 )
 
 var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
+var invalidRequest = struct{}{} 
+var nilRequestBody = &struct{}{}
+
 
 type methodType struct {
 	method    reflect.Method
@@ -93,7 +95,7 @@ func (c *ServerCodec) ReadRequestHeader(req *serverRequest) (err error) {
         return err
     }
     if n != int(length-4) {
-        return io.ErrUnexpedtedEOF
+        return io.ErrUnexpectedEOF
     }
     if err = bson.Unmarshal(b,req); err != nil {
         return 
@@ -104,7 +106,7 @@ func (c *ServerCodec) ReadRequestHeader(req *serverRequest) (err error) {
 // read the request body
 func (c *ServerCodec) ReadRequestBody(body interface{}) (err error) {
     msgbody := make([]byte,4)
-    n,err := io.readFull(c.rw.Reader,msgbody)
+    n,err := io.ReadFull(c.rw.Reader,msgbody)
     if err != nil {
         return 
     }
@@ -267,7 +269,7 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) erro
         // register the method in server's allMethod, for python client
         if _,ok := server.allMethod[mname]; ok {
             log.Println("method",mname,"  already exisit")
-            return errors.New("method",mname,"  already exisit")
+            return errors.New("method " + mname + "  already exisit")
         }
         server.allMethod[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
 	}
@@ -391,7 +393,7 @@ func (server *Server) readRequest(codec *ServerCodec) (service *service, mtype *
             return 
         }
         // just discard body
-        codec.ReadRequestBody(nil)
+        codec.ReadRequestBody(nilRequestBody)
         return 
 	}
     
@@ -455,9 +457,8 @@ func (server *Server) readRequestHeader(codec *ServerCodec) (service *service,mt
 	return 
 }
 
-var invalidRequest = struct{}{}
 
-func (server *Server) sendResponse(sending *syncMutex,req *serverRequest,reply interface{},codec *ServerCodec, errmsg string) {
+func (server *Server) sendResponse(sending *sync.Mutex,req *serverRequest,reply interface{},codec *ServerCodec, errmsg string) {
 	resp := server.getResponse()
     if errmsg != "" {
         resp.Error = errmsg

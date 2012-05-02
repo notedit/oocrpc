@@ -8,12 +8,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"io/ioutil"
-	"launchpad.net/mgo/bson"
 	"log"
 	"net"
 	"sync"
 	"time"
+    "launchpad.net/mgo/bson"
 )
 
 // timeout
@@ -69,7 +68,7 @@ func (cn *conn) ReadResponse(res *clientResponse,reply interface{}) (err error) 
 		return
 	}
     if res.Operation == 3 {
-        cn.ReadResponse(nil)
+        cn.ReadResponseBody(&struct{}{})
         return errors.New(res.Error)
     }
 	err = cn.ReadResponseBody(reply)
@@ -109,7 +108,7 @@ func (cn *conn) ReadResponseHeader(res *clientResponse) (err error) {
 
 func (cn *conn) ReadResponseBody(reply interface{}) (err error) {
     msgbody := make([]byte,4)
-    n,err := cn.rw.Read(mmsgbody)
+    n,err := cn.rw.Read(msgbody)
     if n != 4 {
         return io.ErrUnexpectedEOF
     }

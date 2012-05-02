@@ -31,7 +31,7 @@ func (t *Arith) Mul(args *Args, reply *Reply) error {
 
 func (t *Arith) Div(args *Args, reply *Reply) error {
 	if args.B == 0 {
-		return BackendError{"InternalError", "divide by zero"}
+		return errors.New("divide by zero")
 	}
 	reply.C = args.A / args.B
 	return nil
@@ -41,9 +41,6 @@ func (t *Arith) NError(args *Args, reply *Reply) error {
 	return errors.New("normalerror")
 }
 
-func (t *Arith) Error(args *Args, reply *Reply) error {
-	panic("ERROR")
-}
 
 func startServer() {
 	newServer := NewServer("localhost", 9091)
@@ -109,11 +106,4 @@ func TestServer(t *testing.T) {
 		t.Error("expected divide by zero error detail")
 	}
 
-	// Panic test
-	err = client.Call("Arith.Error", args, reply)
-	if err == nil {
-		t.Error("expect panic error")
-	} else if err.(BackendError).Detail != "ERROR" {
-		t.Error("Panic test expect ERROR detail")
-	}
 }
