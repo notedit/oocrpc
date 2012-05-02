@@ -8,11 +8,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"launchpad.net/mgo/bson"
 	"log"
 	"net"
 	"sync"
 	"time"
-    "launchpad.net/mgo/bson"
 )
 
 // timeout
@@ -34,53 +34,53 @@ type conn struct {
 	c  *Client
 }
 
-func (cn *conn) WriteRequest(req *clientRequest,body interface{}) (err error) {
-    rw := cn.rw.Writer
-    // write request header
+func (cn *conn) WriteRequest(req *clientRequest, body interface{}) (err error) {
+	rw := cn.rw.Writer
+	// write request header
 	bys, err := bson.Marshal(req)
 	if err != nil {
-		log.Println("marshal request header error, ",err.Error())
+		log.Println("marshal request header error, ", err.Error())
 		return
 	}
 	_, err = rw.Write(bys)
 	if err != nil {
-        log.Println("write request header error, ",err.Error())
+		log.Println("write request header error, ", err.Error())
 		return
 	}
-    // write request body
-    bys,err = bson.Marshal(body)
-    if err != nil {
-        log.Println("marshal request body error, ",err.Error())
-        return 
-    }
-    _,err = rw.Write(bys)
-    if err != nil {
-        log.Println("write request body error, ",err.Error())
-    }
+	// write request body
+	bys, err = bson.Marshal(body)
+	if err != nil {
+		log.Println("marshal request body error, ", err.Error())
+		return
+	}
+	_, err = rw.Write(bys)
+	if err != nil {
+		log.Println("write request body error, ", err.Error())
+	}
 	if err = rw.Flush(); err != nil {
 		log.Println("write request error, ", err.Error())
 	}
 	return
 }
 
-func (cn *conn) ReadResponse(res *clientResponse,reply interface{}) (err error) {
+func (cn *conn) ReadResponse(res *clientResponse, reply interface{}) (err error) {
 	if err = cn.ReadResponseHeader(res); err != nil {
 		return
 	}
-    if res.Operation == 3 {
-        cn.ReadResponseBody(&struct{}{})
-        return errors.New(res.Error)
-    }
+	if res.Operation == 3 {
+		cn.ReadResponseBody(&struct{}{})
+		return errors.New(res.Error)
+	}
 	err = cn.ReadResponseBody(reply)
 	return
 }
 
 func (cn *conn) ReadResponseHeader(res *clientResponse) (err error) {
 	msgheader := make([]byte, 4)
-    n,err := cn.rw.Read(msgheader)
-    if n != 4 {
-        return io.ErrUnexpectedEOF
-    }
+	n, err := cn.rw.Read(msgheader)
+	if n != 4 {
+		return io.ErrUnexpectedEOF
+	}
 	if err != nil {
 		res = nil
 		if err == io.EOF {
@@ -89,60 +89,60 @@ func (cn *conn) ReadResponseHeader(res *clientResponse) (err error) {
 		err = errors.New("rpc: client cannot read requestHeader " + err.Error())
 		return
 	}
-    length := binary.LittleEndian.Uint32(msgheader)
-    b := make([]byte,length)
-    binary.LittleEndian.PutUint32(b,length)
-    n,err = io.ReadFull(cn.rw.Reader,b[4:])
-    if err != nil {
-        if err == io.EOF {
-            return io.ErrUnexpectedEOF
-        }
-        return 
-    }
-    if n != int(length-4) {
-        return io.ErrUnexpectedEOF
-    }
-    err = bson.Unmarshal(b,res)
+	length := binary.LittleEndian.Uint32(msgheader)
+	b := make([]byte, length)
+	binary.LittleEndian.PutUint32(b, length)
+	n, err = io.ReadFull(cn.rw.Reader, b[4:])
+	if err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
+		return
+	}
+	if n != int(length-4) {
+		return io.ErrUnexpectedEOF
+	}
+	err = bson.Unmarshal(b, res)
 	return
 }
 
 func (cn *conn) ReadResponseBody(reply interface{}) (err error) {
-    msgbody := make([]byte,4)
-    n,err := cn.rw.Read(msgbody)
-    if n != 4 {
-        return io.ErrUnexpectedEOF
-    }
-    if err != nil {
-        if err == io.EOF {
-            return io.ErrUnexpectedEOF
-        }
-        return
-    }
-    length := binary.LittleEndian.Uint32(msgbody)
-    b := make([]byte,length)
-    binary.LittleEndian.PutUint32(b,length)
-    n,err = io.ReadFull(cn.rw.Reader,b[4:])
-    if err != nil {
-        if err == io.EOF {
-            return io.ErrUnexpectedEOF
-        }
-        return
-    }
-    if n != int(length-4) {
-        return io.ErrUnexpectedEOF
-    }
-    err = bson.Unmarshal(b,reply)
-    return
+	msgbody := make([]byte, 4)
+	n, err := cn.rw.Read(msgbody)
+	if n != 4 {
+		return io.ErrUnexpectedEOF
+	}
+	if err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
+		return
+	}
+	length := binary.LittleEndian.Uint32(msgbody)
+	b := make([]byte, length)
+	binary.LittleEndian.PutUint32(b, length)
+	n, err = io.ReadFull(cn.rw.Reader, b[4:])
+	if err != nil {
+		if err == io.EOF {
+			return io.ErrUnexpectedEOF
+		}
+		return
+	}
+	if n != int(length-4) {
+		return io.ErrUnexpectedEOF
+	}
+	err = bson.Unmarshal(b, reply)
+	return
 }
 
 type clientRequest struct {
-	Operation     uint8
-	Method        string
+	Operation uint8
+	Method    string
 }
 
 type clientResponse struct {
-	Operation     uint8
-    Error         string
+	Operation uint8
+	Error     string
 }
 
 func New(server string) *Client {
@@ -200,17 +200,17 @@ func (c *Client) release(cn *conn) {
 	c.freeconn = append(c.freeconn, cn)
 }
 
-func (c *Client) call(req *clientRequest,args interface{},reply interface{}) (err error) {
+func (c *Client) call(req *clientRequest, args interface{}, reply interface{}) (err error) {
 	cn, err := c.getConn()
 	if err != nil {
 		return
 	}
 	defer c.release(cn)
-	if err = cn.WriteRequest(req,args); err != nil {
+	if err = cn.WriteRequest(req, args); err != nil {
 		return err
 	}
 	res := &clientResponse{}
-	if err = cn.ReadResponse(res,reply); err != nil {
+	if err = cn.ReadResponse(res, reply); err != nil {
 		return
 	}
 	return
@@ -220,7 +220,7 @@ func (c *Client) Call(serviceMethod string, args interface{}, reply interface{})
 	req := new(clientRequest)
 	req.Method = serviceMethod
 	req.Operation = uint8(1)
-	err := c.call(req,args,reply)
+	err := c.call(req, args, reply)
 	if err != nil {
 		return err
 	}

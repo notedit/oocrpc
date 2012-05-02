@@ -4,10 +4,10 @@
 package rpc
 
 import (
-    "fmt"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
-    "strings"
 )
 
 type Args struct {
@@ -42,7 +42,6 @@ func (t *Arith) NError(args *Args, reply *Reply) error {
 	return errors.New("normalerror")
 }
 
-
 func startServer() {
 	newServer := NewServer("localhost", 9091)
 	newServer.Register(new(Arith))
@@ -53,7 +52,7 @@ func TestServer(t *testing.T) {
 	go startServer()
 	client := New("localhost:9091")
 
-    fmt.Println("string....")
+	fmt.Println("string....")
 	// normal calls
 	args := &Args{7, 8}
 	reply := new(Reply)
@@ -71,20 +70,20 @@ func TestServer(t *testing.T) {
 	err = client.Call("Arith.BadOperation", args, reply)
 	if err == nil {
 		t.Error("BadOperation: expected errpor")
-	} else if !strings.Contains(err.Error(),"method") {
-        t.Error("expected none exist method,got:",err.Error())
-    }
+	} else if !strings.Contains(err.Error(), "method") {
+		t.Error("expected none exist method,got:", err.Error())
+	}
 
-    t.Log(err.Error())
+	t.Log(err.Error())
 	// normal error
 
 	err = client.Call("Arith.NError", args, reply)
 	if err == nil {
 		t.Error("expected normal error")
-    } else if !strings.Contains(err.Error(),"normalerror")  {
-        t.Error("expected an normal error, got ",err.Error())
-    } 
-    t.Log(err.Error())
+	} else if !strings.Contains(err.Error(), "normalerror") {
+		t.Error("expected an normal error, got ", err.Error())
+	}
+	t.Log(err.Error())
 
 	// Unknown service
 	args = &Args{7, 8}
@@ -92,10 +91,10 @@ func TestServer(t *testing.T) {
 	err = client.Call("Unknow.Arith", args, reply)
 	if err == nil {
 		t.Error("expected Unknow service error")
-	} else if !strings.Contains(err.Error(),"service") {
-        t.Error("expected Unknow service error: got ",err.Error())
-    }
-    t.Log(err.Error())
+	} else if !strings.Contains(err.Error(), "service") {
+		t.Error("expected Unknow service error: got ", err.Error())
+	}
+	t.Log(err.Error())
 
 	// Error test
 	args = &Args{7, 0}
@@ -104,8 +103,8 @@ func TestServer(t *testing.T) {
 
 	if err == nil {
 		t.Error("Div: expected error")
-	} else if !strings.Contains(err.Error(),"divide by") {
-        t.Error("expected divide by zero error detail:",err.Error())
-    }
+	} else if !strings.Contains(err.Error(), "divide by") {
+		t.Error("expected divide by zero error detail:", err.Error())
+	}
 
 }
