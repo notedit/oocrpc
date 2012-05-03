@@ -27,9 +27,6 @@ default_read_buffer_size = 8192
 class ConnectionError(Exception):
     pass
 
-class BackendError(RpcError):
-    pass
-
 class RpcError(Exception):
     
     def __init__(self,message):
@@ -40,6 +37,10 @@ class RpcError(Exception):
 
     def __repr__(self):
         return self.message,self.detail
+
+class BackendError(RpcError):
+    pass
+
 
 class Request(object):
     header = None
@@ -181,20 +182,24 @@ class RpcClient(object):
         self.conn = Connection(self.host,self.port)
 
     def __getattr__(self,funcname):
-        func = lambda **kwargs:self.__call__(funcname,**kwargs)f
+        func = lambda args:self.__call__(funcname,args)
         func.__name__ = funcname
         return func
 
-    def __call__(self,method,**kwargs):
-        self.conn.write_request(method,kwargs)
+    def __call__(self,method,args):
+        if not isinstance(args,dict):
+            raise RpcError("args should be dict type")
+        self.conn.write_request(method,args)
         res = self.conn.read_response()
         if res.error:
             raise RpcError(res.error)
+        if res.reply.has_key('_'):
+            return res.reply['_']
         return res.reply
 
 if __name__ == '__main__':
     client = RpcClient(host='localhost',port=9090)
-    ret = client.Add({'a':7,'b':8})
+    ret = client.Add({'a':7,'b':9})
     print 'Arith.Add',ret
 
     ret = client.Mul({'a':7,'b':8})

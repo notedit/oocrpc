@@ -17,13 +17,14 @@ import (
 	"sync"
 	"unicode"
 	// "runtime"
-	"launchpad.net/mgo/bson"
 	"unicode/utf8"
+    "oocrpc/bson"
 )
 
 var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 var invalidRequest = struct{}{}
 var nilRequestBody = &struct{}{}
+
 
 type methodType struct {
 	method    reflect.Method
@@ -42,7 +43,8 @@ type service struct {
 type Server struct {
 	mu         sync.Mutex
 	serviceMap map[string]*service
-	allMethod  map[string]*methodType
+	allMethod  map[string]*methodType // for python client
+    methodServiceMap map[string]*service // for python client
 	listener   *net.TCPListener
 	reqLock    sync.Mutex
 	freeReq    *serverRequest
@@ -121,7 +123,7 @@ func (c *ServerCodec) ReadRequestBody(body interface{}) (err error) {
 		}
 		return
 	}
-	if err = bson.Unmarshal(b, body); err != nil {
+    if err = bson.Unmarshal(b,body); err != nil {
 		return
 	}
 	return
@@ -143,7 +145,7 @@ func (c *ServerCodec) WriteResponse(res *serverResponse, body interface{}) (err 
 		return
 	}
 	// write message body
-	bys, err = bson.Marshal(body)
+    bys, err = bson.Marshal(body)
 	if err != nil {
 		log.Println("marshal response body error", err)
 		return
@@ -270,12 +272,13 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) erro
 			return errors.New("method " + mname + "  already exisit")
 		}
 		server.allMethod[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
+        server.methodServiceMap[mname] = s
 	}
 
 	if len(s.method) == 0 {
-		s := "rpc Register: type " + sname + " has no exported methods of suitable type"
-		log.Println(s)
-		return errors.New(s)
+		ss := "rpc Register: type " + sname + " has no exported methods of suitable type"
+		log.Println(ss)
+		return errors.New(ss)
 	}
 	server.serviceMap[s.name] = s
 	return nil
@@ -293,6 +296,7 @@ func NewServer(host string, port uint) *Server {
 	return &Server{
 		serviceMap: make(map[string]*service),
 		allMethod:  make(map[string]*methodType),
+        methodServiceMap: make(map[string]*service),
 		listener:   listener,
 	}
 }
@@ -432,10 +436,16 @@ func (server *Server) readRequestHeader(codec *ServerCodec) (service *service, m
 	if len(serviceMethod) == 1 {
 		server.mu.Lock()
 		mtype = server.allMethod[serviceMethod[0]]
+        service = server.methodServiceMap[serviceMethod[0]]
 		server.mu.Unlock()
 		if mtype == nil {
 			err = errors.New("rpc: can not find method " + req.Method)
+            return
 		}
+        if service == nil {
+            err = errors.New("rpc: can not find service " + req.Method)
+            return 
+        }
 	}
 	// need to check service and method all
 	if len(serviceMethod) == 2 {
@@ -465,7 +475,7 @@ func (server *Server) sendResponse(sending *sync.Mutex, req *serverRequest, repl
 	}
 
 	sending.Lock()
-	err := codec.WriteResponse(resp, reply)
+    err := codec.WriteResponse(resp, reply)
 	if err != nil {
 		log.Println("rpc: writing response:", err)
 	}

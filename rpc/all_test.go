@@ -38,8 +38,16 @@ func (t *Arith) Div(args *Args, reply *Reply) error {
 	return nil
 }
 
+
 func (t *Arith) NError(args *Args, reply *Reply) error {
 	return errors.New("normalerror")
+}
+
+func (t *Arith)SimpleValue(arg *int,reply *bool) error {
+    if *arg == 2 {
+        *reply = true
+    }
+    return nil
 }
 
 func startServer() {
@@ -106,5 +114,16 @@ func TestServer(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "divide by") {
 		t.Error("expected divide by zero error detail:", err.Error())
 	}
+
+    // SimpleValue
+    arg := 2
+    var rep bool
+    err = client.Call("Arith.SimpleValue",&arg,&rep)
+    if err != nil {
+        t.Error("SimpleValue Error")
+    } 
+    if !rep {
+        t.Error(" the rep should be true")
+    }
 
 }

@@ -8,11 +8,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"launchpad.net/mgo/bson"
 	"log"
 	"net"
 	"sync"
 	"time"
+    "oocrpc/bson"
 )
 
 // timeout
@@ -48,7 +48,7 @@ func (cn *conn) WriteRequest(req *clientRequest, body interface{}) (err error) {
 		return
 	}
 	// write request body
-	bys, err = bson.Marshal(body)
+    bys, err = bson.Marshal(body)
 	if err != nil {
 		log.Println("marshal request body error, ", err.Error())
 		return
@@ -131,7 +131,9 @@ func (cn *conn) ReadResponseBody(reply interface{}) (err error) {
 	if n != int(length-4) {
 		return io.ErrUnexpectedEOF
 	}
-	err = bson.Unmarshal(b, reply)
+    if err = bson.Unmarshal(b,reply); err != nil {
+        return
+    }
 	return
 }
 
