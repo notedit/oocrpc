@@ -6,6 +6,7 @@ so you can write the webapp's frontend with python(django tornado flask), write 
 
 ## QUICK START
 
+    $ go get  github.com/notedit/oocrpc/bson
     $ go get  github.com/notedit/oocrpc/rpc
     $ go test github.com/notedit/oocrpc/rpc
 
