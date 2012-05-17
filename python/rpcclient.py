@@ -132,7 +132,10 @@ class Connection(object):
         data = request.encode_request()
         try:
             self.conn.sendall(data)
-        except ConnectionError,ex:
+        except socket.error,ex:
+            self.reconnect()
+            self.conn.sendall(data)
+        except socket.timeout,ex:
             self.reconnect()
             self.conn.sendall(data)
 
@@ -164,8 +167,10 @@ class Connection(object):
             data = self.conn.recv(default_read_buffer_size)
             if not data:
                 raise ConnectionError('unexpected EOF in read')
+        except socket.error:
+            raise ConnectionError('unexpected recv error')
         except socket.timeout:
-            data = ''
+            raise ConnectionError('unexpected timeout error')
         if buf:
             buf_write(data)
             data = ''.join(buf)
