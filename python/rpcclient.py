@@ -66,7 +66,7 @@ class Response(object):
 
     @property
     def error(self):
-        pass
+        return self.header.get('error')
 
     def decode_response(self,data):
         try:
