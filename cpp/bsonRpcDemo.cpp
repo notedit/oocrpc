@@ -18,13 +18,6 @@ using namespace std;
 using namespace bson;
 using boost::asio::ip::tcp;
 
-void iter(bo o) {
-    /* iterator example */
-    cout << "\niter()\n";
-    for( bo::iterator i(o); i.more(); ) {
-        cout << ' ' << i.next().toString() << '\n';
-    }
-}
 
 bool WriteRpcRequestHeader(tcp::socket& socket, const char* method ) 
 {
@@ -133,8 +126,19 @@ bool DoRpcCall(const char* host, const char* method, BSONObj& arg, BSONObj* resu
 	tcp::socket s(io_service);
 	boost::system::error_code ec;
 	s.connect(  boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(host), 9091), ec); 
+	if (ec)
+	{
+		cout << ec.message() << endl;
+		return false;
+	}
+
 	boost::asio::ip::tcp::no_delay option(true);
-	s.set_option(option);
+	s.set_option(option, ec);
+	if (ec)
+	{
+		cout << ec.message() << endl;
+		return false;
+	}
 
 	if ( !WriteRpcRequestHeader(s, method) )
 	{
@@ -162,6 +166,7 @@ bool DoRpcCall(const char* host, const char* method, BSONObj& arg, BSONObj* resu
 		return false;
 	}
 
+	s.shutdown(boost::asio::socket_base::shutdown_both);
 	s.close();
 	
 	if (rpcResult == 0)	//rpc response body is an empty bson object
@@ -186,6 +191,11 @@ void TestArithAdd(const char* host)
 		c = result["c"].Int();
 		assert(c == 15);
 	}
+	else
+	{
+		cout << result.jsonString(JS, 1) << endl;
+		assert(false);
+	}
 }
 
 void NError(const char* host) 
@@ -196,9 +206,11 @@ void NError(const char* host)
 
 	BSONObj result;
 	int c = 0;
-	if ( DoRpcCall(host, "NError", b.obj(), &result) )	//Arith.Add
+	if ( DoRpcCall(host, "Arith.NError", b.obj(), &result) )	//Arith.Add
 	{
-		//cout << result.jsonString(JS, 1) << endl;
+		cout << "never happened" << endl;
+		cout << result.jsonString(JS, 1) << endl;
+		assert(false);
 	}
 }
 
@@ -240,72 +252,6 @@ int main(int argc, char** argv) {
 		std::cerr << e.what() << std::endl;
 	}
 
-#if 0
-    cout << "build bits: " << 8 * sizeof(char *) << '\n' <<  endl;
-
-    /* a bson object defaults on construction to { } */
-    bo empty;
-    cout << "empty: " << empty << endl;
-
-    /* make a simple { name : 'joe', age : 33.7 } object */
-    {
-        bob b;
-        b.append("name", "joe");
-        b.append("age", 33.7);
-        b.obj();
-    }
-
-    /* make { name : 'joe', age : 33.7 } with a more compact notation. */
-    bo x = bob().append("name", "joe").append("age", 33.7).obj();
-
-    /* convert from bson to json */
-    string json = x.toString();
-    cout << "json for x:" << json << endl;
-
-    /* access some fields of bson object x */
-    cout << "Some x things: " << x["name"] << ' ' << x["age"].Number() << ' ' << x.isEmpty() << endl;
-
-    /* make a bit more complex object with some nesting
-       { x : 'asdf', y : true, subobj : { z : 3, q : 4 } }
-    */
-    bo y = BSON( "x" << "asdf" << "y" << true << "subobj" << BSON( "z" << 3 << "q" << 4 ) );
-
-    /* print it */
-    cout << "y: " << y << endl;
-
-    /* reach in and get subobj.z */
-    cout << "subobj.z: " << y.getFieldDotted("subobj.z").Number() << endl;
-
-    /* alternate syntax: */
-    cout << "subobj.z: " << y["subobj"]["z"].Number() << endl;
-
-    /* fetch all *top level* elements from object y into a vector */
-    vector<be> v;
-    y.elems(v);
-    cout << v[0] << endl;
-
-    /* into an array */
-    list<be> L;
-    y.elems(L);
-
-    bo sub = y["subobj"].Obj();
-
-    /* grab all the int's that were in subobj.  if it had elements that were not ints, we throw an exception
-       (capital V on Vals() means exception if wrong type found
-    */
-    vector<int> myints;
-    sub.Vals(myints);
-    cout << "my ints: " << myints[0] << ' ' << myints[1] << endl;
-
-    /* grab all the string values from x.  if the field isn't of string type, just skip it --
-       lowercase v on vals() indicates skip don't throw.
-    */
-    vector<string> strs;
-    x.vals(strs);
-    cout << strs.size() << " strings, first one: " << strs[0] << endl;
-
-    iter(y);
-#endif
     return 0;
 }
 
