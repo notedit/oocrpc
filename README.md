@@ -141,3 +141,24 @@ print 'Add',ret
 ret = client.Mul({'a':7,'b':8})
 print 'Mul',ret
 ```
+
+# cpp rpc client:
+```cpp
+	bob b;
+	b.append("a", int(7));
+	b.append("b", int(8));
+
+	BSONObj result;
+	int c = 0;
+	if ( DoRpcCall(host, "Arith.Add", b.obj(), &result) )	//
+	{
+		//cout << result.jsonString(JS, 1) << endl;
+		c = result["c"].Int();
+		assert(c == 15);
+	}
+	else
+	{
+		cout << result.jsonString(JS, 1) << endl;
+		assert(false);
+	}
+```
