@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Oocrpc by notedit</title>
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script src="javascripts/respond.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <link rel="stylesheet" href="stylesheets/ie.css">
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+  </head>
+  <body>
+      <div id="header">
+        <nav>
+          <li class="fork"><a href="https://github.com/notedit/oocrpc">View On GitHub</a></li>
+          <li class="downloads"><a href="https://github.com/notedit/oocrpc/zipball/master">ZIP</a></li>
+          <li class="downloads"><a href="https://github.com/notedit/oocrpc/tarball/master">TAR</a></li>
+          <li class="title">DOWNLOADS</li>
+        </nav>
+      </div><!-- end header -->
+
+    <div class="wrapper">
+
+      <section>
+        <div id="title">
+          <h1>Oocrpc</h1>
+          <p>a rpc based on bson， you can call the remote golang service from the python  or cpp  client</p>
+          <hr>
+          <span class="credits left">Project maintained by <a href="https://github.com/notedit">notedit</a></span>
+          <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="http://twitter.com/#!/michigangraham">mattgraham</a></span>
+        </div>
+
+        <h1>oocrpc</h1>
+
+<p>This is oocrpc, a rpc based on bson, you can call the remote golang service from the python client.</p>
+
+<p>so you can write the webapp's frontend with python(django tornado flask), write the webapp's backend with go.</p>
+
+<h2>QUICK START</h2>
+
+<pre><code>$ go get  github.com/notedit/oocrpc/bson
+$ go get  github.com/notedit/oocrpc/rpc
+$ go test github.com/notedit/oocrpc/rpc
+</code></pre>
+
+<h1>go rpc server:</h1>
+
+<div class="highlight">
+<pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"errors"</span>
+    <span class="s">"github.com/notedit/oocrpc/rpc"</span>
+<span class="p">)</span>
+
+<span class="k">type</span> <span class="n">Args</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">A</span><span class="p">,</span> <span class="n">B</span> <span class="nb">int</span>
+<span class="p">}</span>
+
+<span class="k">type</span> <span class="n">Reply</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">C</span> <span class="nb">int</span>
+<span class="p">}</span>
+
+<span class="k">type</span> <span class="n">Arith</span> <span class="nb">int</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">t</span> <span class="p">*</span><span class="n">Arith</span><span class="p">)</span> <span class="n">Add</span><span class="p">(</span><span class="n">args</span> <span class="p">*</span><span class="n">Args</span><span class="p">,</span> <span class="n">reply</span> <span class="p">*</span><span class="n">Reply</span><span class="p">)</span> <span class="n">error</span> <span class="p">{</span>
+    <span class="n">reply</span><span class="p">.</span><span class="n">C</span> <span class="p">=</span> <span class="n">args</span><span class="p">.</span><span class="n">A</span> <span class="p">+</span> <span class="n">args</span><span class="p">.</span><span class="n">B</span>
+    <span class="k">return</span> <span class="n">nil</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">t</span> <span class="p">*</span><span class="n">Arith</span><span class="p">)</span> <span class="n">Mul</span><span class="p">(</span><span class="n">args</span> <span class="p">*</span><span class="n">Args</span><span class="p">,</span> <span class="n">reply</span> <span class="p">*</span><span class="n">Reply</span><span class="p">)</span> <span class="n">error</span> <span class="p">{</span>
+    <span class="n">reply</span><span class="p">.</span><span class="n">C</span> <span class="p">=</span> <span class="n">args</span><span class="p">.</span><span class="n">A</span> <span class="p">*</span> <span class="n">args</span><span class="p">.</span><span class="n">B</span>
+    <span class="k">return</span> <span class="n">nil</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">t</span> <span class="p">*</span><span class="n">Arith</span><span class="p">)</span> <span class="n">Div</span><span class="p">(</span><span class="n">args</span> <span class="p">*</span><span class="n">Args</span><span class="p">,</span> <span class="n">reply</span> <span class="p">*</span><span class="n">Reply</span><span class="p">)</span> <span class="n">error</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="n">args</span><span class="p">.</span><span class="n">B</span> <span class="p">==</span> <span class="mi">0</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="n">rpc</span><span class="p">.</span><span class="n">BackendError</span><span class="p">{</span><span class="s">"InternalError"</span><span class="p">,</span> <span class="s">"divide by zero"</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">reply</span><span class="p">.</span><span class="n">C</span> <span class="p">=</span> <span class="n">args</span><span class="p">.</span><span class="n">A</span> <span class="p">/</span> <span class="n">args</span><span class="p">.</span><span class="n">B</span>
+    <span class="k">return</span> <span class="n">nil</span>
+<span class="p">}</span>
+
+
+<span class="k">func</span> <span class="p">(</span><span class="n">t</span> <span class="p">*</span><span class="n">Arith</span><span class="p">)</span> <span class="n">Error</span><span class="p">(</span><span class="n">args</span> <span class="p">*</span><span class="n">Args</span><span class="p">,</span> <span class="n">reply</span> <span class="p">*</span><span class="n">Reply</span><span class="p">)</span> <span class="n">error</span> <span class="p">{</span>
+    <span class="n">panic</span><span class="p">(</span><span class="s">"ERROR"</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="p">(</span><span class="n">t</span> <span class="p">*</span><span class="n">Arith</span><span class="p">)</span> <span class="n">NError</span><span class="p">(</span><span class="n">args</span> <span class="p">*</span><span class="n">Args</span><span class="p">,</span> <span class="n">reply</span> <span class="p">*</span><span class="n">Reply</span><span class="p">)</span> <span class="n">error</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">errors</span><span class="p">.</span><span class="n">New</span><span class="p">(</span><span class="s">"normalerror"</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">newServer</span> <span class="p">:=</span> <span class="n">rpc</span><span class="p">.</span><span class="n">NewServer</span><span class="p">(</span><span class="s">"localhost"</span><span class="p">,</span> <span class="mi">9091</span><span class="p">)</span>
+    <span class="n">newServer</span><span class="p">.</span><span class="n">Register</span><span class="p">(</span><span class="nb">new</span><span class="p">(</span><span class="n">Arith</span><span class="p">))</span>
+    <span class="n">newServer</span><span class="p">.</span><span class="n">Serv</span><span class="p">()</span>
+<span class="p">}</span>    
+</pre>
+</div>
+
+
+<h1>go rpc client:</h1>
+
+<div class="highlight">
+<pre><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+    <span class="s">"fmt"</span>
+    <span class="s">"github.com/notedit/oocrpc/rpc"</span>
+<span class="p">)</span>
+
+<span class="k">type</span> <span class="n">Args</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">A</span><span class="p">,</span> <span class="n">B</span> <span class="nb">int</span>
+<span class="p">}</span>
+
+<span class="k">type</span> <span class="n">Reply</span> <span class="k">struct</span> <span class="p">{</span>
+    <span class="n">C</span> <span class="nb">int</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="n">client</span> <span class="p">:=</span> <span class="n">rpc</span><span class="p">.</span><span class="n">New</span><span class="p">(</span><span class="s">"localhost:9090"</span><span class="p">)</span>
+    <span class="c1">// normal test</span>
+    <span class="n">args</span> <span class="p">:=</span> <span class="p">&amp;</span><span class="n">Args</span><span class="p">{</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">}</span>
+    <span class="n">reply</span> <span class="p">:=</span> <span class="p">&amp;</span><span class="n">Reply</span><span class="p">{}</span>
+
+    <span class="n">err</span> <span class="p">:=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Arith.Mul"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+
+    <span class="n">err</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Arith.Add"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+
+    <span class="c1">// un exist method</span>
+    <span class="n">err</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Arith.Notfound"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+    <span class="c1">// un exist service</span>
+    <span class="n">err</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Notfound.arith"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+    <span class="c1">// test error </span>
+    <span class="n">args</span> <span class="p">=</span> <span class="p">&amp;</span><span class="n">Args</span><span class="p">{</span><span class="mi">7</span><span class="p">,</span> <span class="mi">0</span><span class="p">}</span>
+    <span class="n">reply</span> <span class="p">=</span> <span class="p">&amp;</span><span class="n">Reply</span><span class="p">{}</span>
+
+    <span class="n">err</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Arith.Div"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+
+    <span class="c1">// test panic</span>
+    <span class="n">args</span> <span class="p">=</span> <span class="p">&amp;</span><span class="n">Args</span><span class="p">{</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">}</span>
+    <span class="n">reply</span> <span class="p">=</span> <span class="p">&amp;</span><span class="n">Reply</span><span class="p">{}</span>
+
+    <span class="n">err</span> <span class="p">=</span> <span class="n">client</span><span class="p">.</span><span class="n">Call</span><span class="p">(</span><span class="s">"Arith.Error"</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">reply</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">err</span> <span class="p">!=</span> <span class="n">nil</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="p">.</span><span class="n">Println</span><span class="p">(</span><span class="n">err</span><span class="p">.</span><span class="n">Error</span><span class="p">())</span>
+    <span class="p">}</span>
+<span class="p">}</span>                
+</pre>
+</div>
+
+
+<h1>python rpc client:</h1>
+
+<div class="highlight">
+<pre><span class="kn">from</span> <span class="nn">client</span> <span class="kn">import</span> <span class="n">RpcClient</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">RpcClient</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s">'localhost'</span><span class="p">,</span><span class="n">port</span><span class="o">=</span><span class="mi">9090</span><span class="p">)</span>                                                                          
+<span class="n">ret</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">Add</span><span class="p">({</span><span class="s">'a'</span><span class="p">:</span><span class="mi">7</span><span class="p">,</span><span class="s">'b'</span><span class="p">:</span><span class="mi">8</span><span class="p">})</span>
+<span class="k">print</span> <span class="s">'Add'</span><span class="p">,</span><span class="n">ret</span>
+
+<span class="n">ret</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">Mul</span><span class="p">({</span><span class="s">'a'</span><span class="p">:</span><span class="mi">7</span><span class="p">,</span><span class="s">'b'</span><span class="p">:</span><span class="mi">8</span><span class="p">})</span>
+<span class="k">print</span> <span class="s">'Mul'</span><span class="p">,</span><span class="n">ret</span>
+</pre>
+</div>
+
+
+<h1>cpp rpc client:</h1>
+
+<div class="highlight">
+<pre>    <span class="n">bob</span> <span class="n">b</span><span class="p">;</span>
+    <span class="n">b</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">"a"</span><span class="p">,</span> <span class="kt">int</span><span class="p">(</span><span class="mi">7</span><span class="p">));</span>
+    <span class="n">b</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">"b"</span><span class="p">,</span> <span class="kt">int</span><span class="p">(</span><span class="mi">8</span><span class="p">));</span>
+
+    <span class="n">BSONObj</span> <span class="n">result</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">DoRpcCall</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="s">"Arith.Add"</span><span class="p">,</span> <span class="n">b</span><span class="p">.</span><span class="n">obj</span><span class="p">(),</span> <span class="o">&amp;</span><span class="n">result</span><span class="p">)</span> <span class="p">)</span>   <span class="c1">//</span>
+    <span class="p">{</span>
+        <span class="c1">//cout &lt;&lt; result.jsonString(JS, 1) &lt;&lt; endl;</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s">"c"</span><span class="p">].</span><span class="n">Int</span><span class="p">();</span>
+        <span class="n">assert</span><span class="p">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">15</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">result</span><span class="p">.</span><span class="n">jsonString</span><span class="p">(</span><span class="n">JS</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">endl</span><span class="p">;</span>
+        <span class="n">assert</span><span class="p">(</span><span class="kc">false</span><span class="p">);</span>
+    <span class="p">}</span>
+</pre>
+</div>
+
+      </section>
+
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+    
+  </body>
+</html>
